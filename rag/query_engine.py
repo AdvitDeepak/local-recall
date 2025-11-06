@@ -1,0 +1,148 @@
+"""RAG query engine for semantic search and generation."""
+import logging
+from typing import List, Dict, Any, Optional
+import ollama
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+from database import db
+from vector_store import vector_store
+from embeddings import embedder
+from config import settings
+
+
+logger = logging.getLogger(__name__)
+
+# Thread pool for blocking Ollama calls
+executor = ThreadPoolExecutor(max_workers=2)
+
+
+class RAGQueryEngine:
+    """RAG-based query engine for local data."""
+
+    def __init__(self):
+        """Initialize RAG query engine."""
+        self.max_context_snippets = settings.MAX_CONTEXT_SNIPPETS
+        self.llm_model = settings.LLM_MODEL
+
+    async def semantic_search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+        """Perform semantic search over stored data."""
+        try:
+            # Check if vector store has data
+            if vector_store.index.ntotal == 0:
+                logger.warning("Vector store is empty, no results to return")
+                return []
+
+            # Generate query embedding
+            query_embedding = await embedder.embed_async(query)
+
+            # Search vector store
+            search_results = vector_store.search(query_embedding, k=k)
+
+            # Retrieve full entries from database
+            results = []
+            for result in search_results:
+                entry = db.get_entry(result.entry_id)
+                if entry:
+                    results.append({
+                        "id": entry.id,
+                        "text": entry.content,
+                        "score": float(result.score),  # Convert numpy.float32 to Python float
+                        "source": entry.source,
+                        "timestamp": entry.timestamp.isoformat() if entry.timestamp else None
+                    })
+
+            logger.info(f"Semantic search returned {len(results)} results for query: {query}")
+            return results
+
+        except Exception as e:
+            logger.error(f"Error in semantic search: {e}")
+            return []
+
+    async def query_with_rag(self, query: str, model: Optional[str] = None) -> Dict[str, Any]:
+        """Perform RAG-based query with LLM generation."""
+        try:
+            # Perform semantic search
+            search_results = await self.semantic_search(
+                query,
+                k=self.max_context_snippets
+            )
+
+            if not search_results:
+                return {
+                    "answer": "I don't have enough local context to answer this.",
+                    "sources": [],
+                    "query": query
+                }
+
+            # Build context from search results
+            context_parts = []
+            sources = []
+            for i, result in enumerate(search_results):
+                context_parts.append(f"[{result['id']}] {result['text']}")
+                sources.append({
+                    "id": result["id"],
+                    "score": float(result["score"]),  # Ensure it's a Python float
+                    "source": result.get("source"),
+                    "timestamp": result.get("timestamp")
+                })
+
+            context = "\n\n".join(context_parts)
+
+            # Build prompt
+            system_prompt = (
+                "You are a factual, privacy-preserving assistant operating entirely on local data. "
+                "Answer the user's question using only the provided text snippets. "
+                "Do not invent details or access external sources. "
+                "If the context is insufficient, respond with: 'I don't have enough local context to answer this.' "
+                "Keep responses under 150 words and cite snippet IDs in brackets."
+            )
+
+            user_prompt = f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer:"
+
+            # Generate response using Ollama (run in thread pool since it's blocking)
+            llm_model = model or self.llm_model
+            logger.info(f"Calling Ollama with model: {llm_model}")
+
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                executor,
+                lambda: ollama.chat(
+                    model=llm_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ]
+                )
+            )
+
+            answer = response['message']['content']
+
+            logger.info(f"Generated RAG response for query: {query}")
+
+            return {
+                "answer": answer,
+                "sources": sources,
+                "query": query,
+                "model": llm_model
+            }
+
+        except Exception as e:
+            logger.error(f"Error in RAG query: {e}")
+            error_msg = str(e)
+
+            # Provide helpful error messages
+            if "connection" in error_msg.lower() or "connect" in error_msg.lower():
+                error_msg = "Could not connect to Ollama. Make sure Ollama is running (start with: ollama serve)"
+            elif "model" in error_msg.lower() and "not found" in error_msg.lower():
+                error_msg = f"Model '{llm_model}' not found. Pull it with: ollama pull {llm_model}"
+
+            return {
+                "answer": f"Error processing query: {error_msg}",
+                "sources": [],
+                "query": query
+            }
+
+
+# Global query engine instance
+query_engine = RAGQueryEngine()
