@@ -7,7 +7,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+import json
 
 from database import db
 from embeddings import pipeline
@@ -206,7 +208,8 @@ async def query_data(request: QueryRequest):
             # RAG query with LLM
             result = await query_engine.query_with_rag(
                 query=request.query,
-                model=request.model
+                model=request.model,
+                k=request.k
             )
             return result
         else:
@@ -218,6 +221,37 @@ async def query_data(request: QueryRequest):
             return {"results": results}
     except Exception as e:
         logger.error(f"Error processing query: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Streaming query endpoint
+@app.post("/query/stream")
+async def query_data_stream(request: QueryRequest):
+    """Perform RAG query with streaming response."""
+    try:
+        if not request.model:
+            raise HTTPException(status_code=400, detail="Streaming requires a model to be specified")
+
+        async def event_generator():
+            """Generate Server-Sent Events."""
+            async for chunk in query_engine.query_with_rag_stream(
+                query=request.query,
+                model=request.model,
+                k=request.k
+            ):
+                # Format as SSE
+                yield f"data: {json.dumps(chunk)}\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error processing streaming query: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
