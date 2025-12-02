@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     FRONTEND_PORT: int = 8501
 
     # System
-    LOG_LEVEL: str = "INFO"
+    LOG_LEVEL: str = "DEBUG"
     EMBEDDING_DIMENSION: int = 768  # nomic-embed-text dimension
     BATCH_SIZE: int = 10
     MAX_CONTEXT_SNIPPETS: int = 5

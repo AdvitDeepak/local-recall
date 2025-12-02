@@ -67,3 +67,29 @@ class SystemState(Base):
     last_stopped = Column(DateTime, nullable=True)
     total_entries = Column(Integer, default=0)
     total_embedded = Column(Integer, default=0)
+
+
+class Notification(Base):
+    """Model for capture notifications (persistent across processes)."""
+
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    type = Column(String(50), nullable=False)  # 'capture_selected', 'capture_screenshot', 'error'
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=True)
+    status = Column(String(20), default="info")  # 'success', 'warning', 'error', 'info'
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    is_read = Column(Boolean, default=False)
+
+    def to_dict(self):
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "type": self.type,
+            "title": self.title,
+            "message": self.message,
+            "status": self.status,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "read": self.is_read
+        }

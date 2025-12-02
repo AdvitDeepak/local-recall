@@ -28,6 +28,8 @@ def init_session_state():
         st.session_state.last_notification_id = 0
     if 'notifications_enabled' not in st.session_state:
         st.session_state.notifications_enabled = True
+    if 'last_poll_time' not in st.session_state:
+        st.session_state.last_poll_time = 0
 
 
 def fetch_new_notifications():
@@ -53,9 +55,10 @@ def fetch_new_notifications():
 def display_notifications():
     """Display notification toasts for capture events."""
     if not st.session_state.notifications_enabled:
-        return
+        return False
 
     notifications = fetch_new_notifications()
+    displayed_any = False
 
     for notif in notifications:
         # Update the last seen notification ID
@@ -79,22 +82,114 @@ def display_notifications():
         else:
             st.toast(full_message, icon="ℹ️")
 
+        displayed_any = True
+
         # Mark notification as read
         try:
             httpx.post(f"{API_BASE}/notifications/{notif['id']}/read", timeout=2)
         except Exception:
             pass
 
+    return displayed_any
+
+
+@st.fragment(run_every=2)
+def auto_refresh_notifications():
+    """Auto-refresh fragment that checks for new notifications every 2 seconds."""
+    if not st.session_state.notifications_enabled:
+        st.empty()
+        return
+
+    # Check if there are new notifications
+    try:
+        response = httpx.get(
+            f"{API_BASE}/notifications",
+            params={
+                "since_id": st.session_state.last_notification_id,
+                "unread_only": True,
+                "limit": 5
+            },
+            timeout=2
+        )
+        if response.status_code == 200:
+            data = response.json()
+            notifications = data.get("notifications", [])
+
+            for notif in notifications:
+                # Update the last seen notification ID
+                if notif["id"] > st.session_state.last_notification_id:
+                    st.session_state.last_notification_id = notif["id"]
+
+                # Display notification based on status
+                status = notif.get("status", "info")
+                title = notif.get("title", "Notification")
+                message = notif.get("message", "")
+
+                # Use st.toast for popup notifications
+                full_message = f"**{title}**\n\n{message}"
+
+                if status == "success":
+                    st.toast(full_message, icon="✅")
+                elif status == "warning":
+                    st.toast(full_message, icon="⚠️")
+                elif status == "error":
+                    st.toast(full_message, icon="❌")
+                else:
+                    st.toast(full_message, icon="ℹ️")
+
+                # Mark notification as read
+                try:
+                    httpx.post(f"{API_BASE}/notifications/{notif['id']}/read", timeout=2)
+                except Exception:
+                    pass
+    except Exception as e:
+        pass
+
+    # Render placeholder - fragment needs to render something
+    st.empty()
+
+
+def render_live_notification_banner():
+    """Render a live notification banner that shows recent captures."""
+    try:
+        response = httpx.get(
+            f"{API_BASE}/notifications",
+            params={"limit": 1, "unread_only": False},
+            timeout=2
+        )
+        if response.status_code == 200:
+            data = response.json()
+            notifications = data.get("notifications", [])
+            if notifications:
+                notif = notifications[0]
+                status = notif.get("status", "info")
+                title = notif.get("title", "")
+                message = notif.get("message", "")
+                timestamp = notif.get("timestamp", "")[:19] if notif.get("timestamp") else ""
+
+                if status == "success":
+                    st.success(f"**Latest:** {title} - {message} ({timestamp})")
+                elif status == "warning":
+                    st.warning(f"**Latest:** {title} - {message} ({timestamp})")
+                elif status == "error":
+                    st.error(f"**Latest:** {title} - {message} ({timestamp})")
+    except Exception:
+        pass
+
 
 def parse_sse_stream(response):
     """Parse Server-Sent Events from response."""
     for line in response.iter_lines():
-        if line and line.startswith(b'data: '):
-            data = line[6:].decode('utf-8')  # Remove 'data: ' prefix and decode
-            try:
-                yield json.loads(data)
-            except json.JSONDecodeError:
-                continue
+        if line:
+            # Handle both bytes and string responses
+            if isinstance(line, bytes):
+                line = line.decode('utf-8')
+            if line.startswith('data: '):
+                data = line[6:]  # Remove 'data: ' prefix
+                try:
+                    yield json.loads(data)
+                except json.JSONDecodeError:
+                    continue
 
 
 def get_status():
@@ -140,8 +235,11 @@ def main():
 
     init_session_state()
 
-    # Display any new capture notifications as toasts
+    # Display any notifications from initial page load
     display_notifications()
+
+    # Auto-refresh fragment for real-time notifications (runs every 2 seconds)
+    auto_refresh_notifications()
 
     st.title("🧠 Local Recall Dashboard")
     st.markdown("*Privacy-preserving local text capture and RAG system*")
@@ -191,6 +289,12 @@ def main():
             vs_stats = status.get('vector_store', {})
             st.metric("Total Vectors", vs_stats.get('total_vectors', 0))
             st.metric("Dimension", vs_stats.get('dimension', 0))
+
+            st.divider()
+
+            # Live capture activity indicator
+            st.header("Last Capture")
+            render_live_notification_banner()
 
         else:
             st.error("Backend not available")
@@ -434,6 +538,7 @@ def main():
 
         if uploaded_file and st.button("📤 Upload & Process", type="primary", use_container_width=True):
             with st.spinner("Processing document..."):
+                temp_path = None
                 try:
                     # Save uploaded file temporarily
                     temp_path = Path(f"./temp_{uploaded_file.name}")
@@ -442,9 +547,6 @@ def main():
 
                     # Parse document
                     content = document_parser.parse_file(str(temp_path))
-
-                    # Clean up temp file
-                    temp_path.unlink()
 
                     if content:
                         # Add to database via API
@@ -464,11 +566,26 @@ def main():
                             st.info(f"Extracted {len(content)} characters")
                         else:
                             st.error("Failed to save to database")
+                    elif content == "":
+                        # Empty string means parsing worked but no text found
+                        file_ext = uploaded_file.name.split('.')[-1].lower()
+                        if file_ext == 'pdf':
+                            st.error("No text could be extracted from this PDF. It may be scanned/image-based. Try using a PDF with selectable text.")
+                        else:
+                            st.error("The document appears to be empty or contains no extractable text.")
                     else:
-                        st.error("Failed to extract text from document")
+                        # None means parsing failed
+                        st.error("Failed to extract text from document. The file format may be unsupported or corrupted.")
 
                 except Exception as e:
                     st.error(f"Error processing document: {e}")
+                finally:
+                    # Clean up temp file
+                    if temp_path and temp_path.exists():
+                        try:
+                            temp_path.unlink()
+                        except Exception:
+                            pass
 
     with tab4:
         st.header("Settings")

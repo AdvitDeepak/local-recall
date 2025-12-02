@@ -26,23 +26,37 @@ class DocumentParser:
     @staticmethod
     def parse_pdf(file_path: str) -> str:
         """Parse PDF file using PyMuPDF."""
+        doc = None
         try:
             doc = fitz.open(file_path)
             text_parts = []
+            num_pages = len(doc)
 
-            for page_num in range(len(doc)):
+            for page_num in range(num_pages):
                 page = doc[page_num]
+                # Try standard text extraction first
                 text = page.get_text()
-                if text:
+                if text and text.strip():
                     text_parts.append(text)
+                else:
+                    # Try extracting text with different parameters for scanned PDFs
+                    text = page.get_text("text", sort=True)
+                    if text and text.strip():
+                        text_parts.append(text)
 
-            doc.close()
             content = "\n\n".join(text_parts)
-            logger.info(f"Parsed PDF file: {file_path} ({len(doc)} pages)")
+            logger.info(f"Parsed PDF file: {file_path} ({num_pages} pages, {len(content)} chars)")
+
+            if not content.strip():
+                logger.warning(f"PDF file {file_path} appears to have no extractable text (may be scanned/image-based)")
+
             return content.strip()
         except Exception as e:
-            logger.error(f"Error parsing PDF file {file_path}: {e}")
+            logger.error(f"Error parsing PDF file {file_path}: {e}", exc_info=True)
             return ""
+        finally:
+            if doc:
+                doc.close()
 
     @staticmethod
     def parse_docx(file_path: str) -> str:

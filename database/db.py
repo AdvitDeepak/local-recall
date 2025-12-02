@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
 import logging
 
-from database.models import Base, DataEntry, Keybind, SystemState
+from database.models import Base, DataEntry, Keybind, SystemState, Notification
 from config import settings, PST
 
 
@@ -203,6 +203,63 @@ class Database:
                 "last_started": state.last_started.isoformat() if state and state.last_started else None,
                 "last_stopped": state.last_stopped.isoformat() if state and state.last_stopped else None
             }
+
+    # Notification Methods (persistent across processes)
+    def add_notification(self, type: str, title: str, message: str, status: str = "info") -> Notification:
+        """Add a notification to the database."""
+        print(f"    [DB DEBUG] add_notification called: type={type}, title={title}, status={status}")
+        with self.get_session() as session:
+            notification = Notification(
+                type=type,
+                title=title,
+                message=message,
+                status=status,
+                timestamp=datetime.now(PST)
+            )
+            session.add(notification)
+            session.flush()
+            session.refresh(notification)
+            print(f"    [DB DEBUG] Notification created with ID: {notification.id}")
+            logger.debug(f"Added notification: {title}")
+            return notification
+
+    def get_notifications(self, since_id: int = None, unread_only: bool = False, limit: int = 10) -> List[Notification]:
+        """Get notifications with optional filters."""
+        with self.get_session() as session:
+            query = session.query(Notification)
+
+            if since_id:
+                query = query.filter(Notification.id > since_id)
+
+            if unread_only:
+                query = query.filter(Notification.is_read == False)
+
+            results = query.order_by(desc(Notification.id)).limit(limit).all()
+            print(f"    [DB DEBUG] get_notifications: since_id={since_id}, unread_only={unread_only}, limit={limit} -> {len(results)} results")
+            for n in results:
+                print(f"        [DB DEBUG] Notification {n.id}: {n.title} ({n.status}, read={n.is_read})")
+            return results
+
+    def mark_notification_read(self, notification_id: int) -> bool:
+        """Mark a notification as read."""
+        with self.get_session() as session:
+            notification = session.query(Notification).filter(Notification.id == notification_id).first()
+            if notification:
+                notification.is_read = True
+                return True
+            return False
+
+    def mark_all_notifications_read(self) -> int:
+        """Mark all notifications as read."""
+        with self.get_session() as session:
+            count = session.query(Notification).filter(Notification.is_read == False).update({"is_read": True})
+            return count
+
+    def clear_notifications(self):
+        """Clear all notifications."""
+        with self.get_session() as session:
+            session.query(Notification).delete()
+            logger.info("Cleared all notifications")
 
 
 # Global database instance
