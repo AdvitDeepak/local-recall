@@ -10,7 +10,8 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(dir:*)",
-      "Bash(semgrep:*)"
+      "Bash(semgrep:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

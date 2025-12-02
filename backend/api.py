@@ -15,7 +15,6 @@ from database import db
 from embeddings import pipeline
 from rag import query_engine
 from vector_store import vector_store
-from capture.notifications import notification_manager
 from config import settings, ensure_directories
 
 
@@ -315,21 +314,22 @@ async def health_check():
     return {"status": "healthy"}
 
 
-# Notification endpoints
+# Notification endpoints (using database for cross-process persistence)
 @app.get("/notifications")
 async def get_notifications(
     since_id: Optional[int] = None,
     unread_only: bool = False,
     limit: int = 10
 ):
-    """Get recent notifications for capture events."""
+    """Get recent notifications for capture events from database."""
     try:
-        notifications = notification_manager.get_notifications(
+        notifications = db.get_notifications(
             since_id=since_id,
             unread_only=unread_only,
             limit=limit
         )
-        return {"notifications": notifications}
+        # Convert to list of dicts
+        return {"notifications": [n.to_dict() for n in notifications]}
     except Exception as e:
         logger.error(f"Error getting notifications: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -339,7 +339,7 @@ async def get_notifications(
 async def mark_notification_read(notification_id: int):
     """Mark a notification as read."""
     try:
-        success = notification_manager.mark_read(notification_id)
+        success = db.mark_notification_read(notification_id)
         if not success:
             raise HTTPException(status_code=404, detail="Notification not found")
         return StatusResponse(status="success")
@@ -354,7 +354,7 @@ async def mark_notification_read(notification_id: int):
 async def mark_all_notifications_read():
     """Mark all notifications as read."""
     try:
-        notification_manager.mark_all_read()
+        db.mark_all_notifications_read()
         return StatusResponse(status="success")
     except Exception as e:
         logger.error(f"Error marking all notifications as read: {e}")
