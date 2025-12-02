@@ -212,18 +212,14 @@ class RAGQueryEngine:
             loop = asyncio.get_event_loop()
 
             # Stream response chunks
-            def stream_ollama():
-                """Stream from Ollama (blocking call in thread)."""
-                return ollama.chat(
-                    model=llm_model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    stream=True
-                )
-
-            stream = await loop.run_in_executor(executor, stream_ollama)
+            stream = ollama.chat(
+                model=llm_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                stream=True
+            )
 
             for chunk in stream:
                 if 'message' in chunk and 'content' in chunk['message']:

@@ -6,7 +6,9 @@
       "Bash(test:*)",
       "Bash(python test_setup.py:*)",
       "Bash(python main.py:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

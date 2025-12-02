@@ -28,8 +28,8 @@ def init_session_state():
 def parse_sse_stream(response):
     """Parse Server-Sent Events from response."""
     for line in response.iter_lines():
-        if line.startswith('data: '):
-            data = line[6:]  # Remove 'data: ' prefix
+        if line and line.startswith(b'data: '):
+            data = line[6:].decode('utf-8')  # Remove 'data: ' prefix and decode
             try:
                 yield json.loads(data)
             except json.JSONDecodeError:
