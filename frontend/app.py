@@ -499,7 +499,7 @@ def main():
                         endpoint = "/keybind/selected" if action == "capture_selected" else "/keybind/screenshot"
                         response = httpx.post(
                             f"{API_BASE}{endpoint}",
-                            json={"action": action, "key_sequence": key_seq}
+                            json={"key_sequence": key_seq}
                         )
                         if response.status_code == 200:
                             st.success(f"Keybind added: {key_seq} -> {action}")
