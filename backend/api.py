@@ -82,12 +82,20 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# For local-only application, restrict origins to localhost
+ALLOWED_ORIGINS = [
+    "http://localhost:8501",  # Streamlit frontend
+    "http://127.0.0.1:8501",
+    f"http://localhost:{settings.FRONTEND_PORT}",
+    f"http://127.0.0.1:{settings.FRONTEND_PORT}",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 

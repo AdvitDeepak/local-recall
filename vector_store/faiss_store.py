@@ -1,7 +1,7 @@
 """FAISS vector store for semantic search."""
 import numpy as np
 import faiss
-import pickle
+import json
 import logging
 from pathlib import Path
 from typing import List, Tuple, Optional
@@ -39,13 +39,13 @@ class FAISSVectorStore:
     def _initialize_index(self):
         """Initialize or load FAISS index."""
         index_file = self.index_path / "index.faiss"
-        id_map_file = self.index_path / "id_map.pkl"
+        id_map_file = self.index_path / "id_map.json"
 
         if index_file.exists() and id_map_file.exists():
             try:
                 self.index = faiss.read_index(str(index_file))
-                with open(id_map_file, "rb") as f:
-                    self.id_map = pickle.load(f)
+                with open(id_map_file, "r", encoding="utf-8") as f:
+                    self.id_map = json.load(f)
                 logger.info(f"Loaded FAISS index with {len(self.id_map)} vectors")
             except Exception as e:
                 logger.error(f"Error loading FAISS index: {e}")
@@ -136,12 +136,12 @@ class FAISSVectorStore:
         self.index_path.mkdir(parents=True, exist_ok=True)
 
         index_file = self.index_path / "index.faiss"
-        id_map_file = self.index_path / "id_map.pkl"
+        id_map_file = self.index_path / "id_map.json"
 
         faiss.write_index(self.index, str(index_file))
 
-        with open(id_map_file, "wb") as f:
-            pickle.dump(self.id_map, f)
+        with open(id_map_file, "w", encoding="utf-8") as f:
+            json.dump(self.id_map, f)
 
         logger.info(f"Saved FAISS index with {len(self.id_map)} vectors to {self.index_path}")
 
@@ -166,12 +166,16 @@ class FAISSVectorStore:
         self._create_new_index()
         # Delete saved index files if they exist
         index_file = self.index_path / "index.faiss"
-        id_map_file = self.index_path / "id_map.pkl"
+        id_map_file = self.index_path / "id_map.json"
+        # Also clean up legacy pickle file if it exists
+        legacy_id_map_file = self.index_path / "id_map.pkl"
 
         if index_file.exists():
             index_file.unlink()
         if id_map_file.exists():
             id_map_file.unlink()
+        if legacy_id_map_file.exists():
+            legacy_id_map_file.unlink()
 
         logger.info("FAISS vector store reset complete")
 
