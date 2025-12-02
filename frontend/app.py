@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 import sys
+import json
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -22,6 +23,17 @@ def init_session_state():
     """Initialize session state variables."""
     if 'query_history' not in st.session_state:
         st.session_state.query_history = []
+
+
+def parse_sse_stream(response):
+    """Parse Server-Sent Events from response."""
+    for line in response.iter_lines():
+        if line and line.startswith(b'data: '):
+            data = line[6:].decode('utf-8')  # Remove 'data: ' prefix and decode
+            try:
+                yield json.loads(data)
+            except json.JSONDecodeError:
+                continue
 
 
 def get_status():
@@ -115,7 +127,7 @@ def main():
 
         query = st.text_input("Enter your query:", placeholder="What are you looking for?")
 
-        col1, col2 = st.columns([1, 1])
+        col1, col2, col3 = st.columns([1, 1, 1])
 
         with col1:
             use_rag = st.checkbox("Use RAG (LLM-powered answers)", value=True)
@@ -123,53 +135,169 @@ def main():
         with col2:
             num_results = st.slider("Number of results", 1, 10, 5)
 
+        with col3:
+            use_streaming = st.checkbox("Stream responses", value=True, help="Display answers as they are generated")
+
         if st.button("🔍 Search", type="primary", use_container_width=True):
             if query:
                 with st.spinner("Searching..."):
                     try:
-                        if use_rag:
+                        # Handle RAG with streaming
+                        if use_rag and use_streaming:
+                            with httpx.stream(
+                                "POST",
+                                f"{API_BASE}/query/stream",
+                                json={"query": query, "model": settings.LLM_MODEL, "k": num_results},
+                                timeout=120
+                            ) as response:
+                                if response.status_code == 200:
+                                    # Create placeholders for progressive display
+                                    answer_placeholder = st.empty()
+                                    sources_placeholder = st.empty()
+
+                                    metadata = None
+                                    answer_text = ""
+
+                                    # Process streaming events
+                                    for event in parse_sse_stream(response):
+                                        if event.get("type") == "metadata":
+                                            metadata = event
+                                        elif event.get("type") == "answer_chunk":
+                                            answer_text += event.get("content", "")
+                                            # Update answer display progressively
+                                            with answer_placeholder.container():
+                                                st.subheader("💡 Answer")
+                                                st.markdown(f"**{answer_text}**▊")  # Add cursor for streaming effect
+                                        elif event.get("type") == "done":
+                                            # Final update without cursor
+                                            with answer_placeholder.container():
+                                                st.subheader("💡 Answer")
+                                                st.markdown(f"**{answer_text}**")
+                                                if metadata and metadata.get('model'):
+                                                    st.caption(f"🤖 Generated using: {metadata['model']}")
+                                        elif event.get("type") == "error":
+                                            st.error(event.get("content", "Unknown error"))
+
+                                    # Display sources after streaming completes
+                                    if metadata:
+                                        sources = metadata.get('sources', [])
+                                        if sources:
+                                            with sources_placeholder.container():
+                                                st.divider()
+                                                st.subheader(f"📚 Sources ({len(sources)} retrieved)")
+
+                                                for idx, source in enumerate(sources, 1):
+                                                    score = source['score']
+                                                    if score > 0.8:
+                                                        score_color = "🟢"
+                                                    elif score > 0.6:
+                                                        score_color = "🟡"
+                                                    else:
+                                                        score_color = "🟠"
+
+                                                    with st.expander(f"{score_color} Source {idx} - Entry #{source['id']} (Relevance: {score:.1%})"):
+                                                        entry_data = httpx.get(f"{API_BASE}/data?id={source['id']}").json()
+                                                        if entry_data:
+                                                            content = entry_data[0]['content']
+                                                            st.markdown("**Content:**")
+                                                            st.markdown(f"> {content}")
+
+                                                            col1, col2, col3 = st.columns(3)
+                                                            with col1:
+                                                                st.caption(f"📂 **Source:** {entry_data[0].get('source', 'Unknown')}")
+                                                            with col2:
+                                                                st.caption(f"🕒 **Time:** {entry_data[0].get('timestamp', 'N/A')[:19] if entry_data[0].get('timestamp') else 'N/A'}")
+                                                            with col3:
+                                                                st.caption(f"📝 **Length:** {len(content)} chars")
+                                else:
+                                    st.error(f"Search failed: {response.status_code}")
+
+                        # Handle RAG without streaming
+                        elif use_rag:
                             response = httpx.post(
                                 f"{API_BASE}/query",
-                                json={"query": query, "model": settings.LLM_MODEL},
-                                timeout=120  # Increased timeout for LLM calls
+                                json={"query": query, "model": settings.LLM_MODEL, "k": num_results},
+                                timeout=120
                             )
-                        else:
-                            response = httpx.post(
-                                f"{API_BASE}/query",
-                                json={"query": query, "k": num_results},
-                                timeout=60  # Increased timeout for embedding generation
-                            )
+                            if response.status_code == 200:
+                                result = response.json()
 
-                        if response.status_code == 200:
-                            result = response.json()
+                                st.subheader("💡 Answer")
+                                st.markdown(f"**{result.get('answer', 'No answer generated')}**")
 
-                            if use_rag:
-                                st.subheader("Answer")
-                                st.markdown(result.get('answer', 'No answer generated'))
+                                if result.get('model'):
+                                    st.caption(f"🤖 Generated using: {result['model']}")
 
                                 sources = result.get('sources', [])
                                 if not sources:
                                     st.info("No data found. Capture some text first using Ctrl+Alt+R or upload documents.")
                                 else:
-                                    st.subheader("Sources")
-                                    for source in sources:
-                                        with st.expander(f"Entry #{source['id']} (Score: {source['score']:.3f})"):
+                                    st.divider()
+                                    st.subheader(f"📚 Sources ({len(sources)} retrieved)")
+
+                                    for idx, source in enumerate(sources, 1):
+                                        score = source['score']
+                                        if score > 0.8:
+                                            score_color = "🟢"
+                                        elif score > 0.6:
+                                            score_color = "🟡"
+                                        else:
+                                            score_color = "🟠"
+
+                                        with st.expander(f"{score_color} Source {idx} - Entry #{source['id']} (Relevance: {score:.1%})"):
                                             entry_data = httpx.get(f"{API_BASE}/data?id={source['id']}").json()
                                             if entry_data:
-                                                st.text(entry_data[0]['content'])
-                                                st.caption(f"Source: {entry_data[0].get('source', 'Unknown')} | {entry_data[0].get('timestamp', '')}")
+                                                content = entry_data[0]['content']
+                                                st.markdown("**Content:**")
+                                                st.markdown(f"> {content}")
+
+                                                col1, col2, col3 = st.columns(3)
+                                                with col1:
+                                                    st.caption(f"📂 **Source:** {entry_data[0].get('source', 'Unknown')}")
+                                                with col2:
+                                                    st.caption(f"🕒 **Time:** {entry_data[0].get('timestamp', 'N/A')[:19] if entry_data[0].get('timestamp') else 'N/A'}")
+                                                with col3:
+                                                    st.caption(f"📝 **Length:** {len(content)} chars")
                             else:
+                                st.error(f"Search failed: {response.status_code}")
+
+                        # Handle semantic search only
+                        else:
+                            response = httpx.post(
+                                f"{API_BASE}/query",
+                                json={"query": query, "k": num_results},
+                                timeout=60
+                            )
+                            if response.status_code == 200:
+                                result = response.json()
                                 results = result.get('results', [])
                                 if not results:
                                     st.info("No results found. Capture some text first using Ctrl+Alt+R or upload documents.")
                                 else:
-                                    st.subheader(f"Found {len(results)} Results")
-                                    for res in results:
-                                        with st.expander(f"Entry #{res['id']} (Score: {res['score']:.3f})"):
-                                            st.text(res['text'])
-                                            st.caption(f"Source: {res.get('source', 'Unknown')} | {res.get('timestamp', '')}")
-                        else:
-                            st.error(f"Search failed: {response.status_code}")
+                                    st.subheader(f"🔍 Found {len(results)} Results")
+
+                                    for idx, res in enumerate(results, 1):
+                                        score = res['score']
+                                        if score > 0.8:
+                                            score_color = "🟢"
+                                        elif score > 0.6:
+                                            score_color = "🟡"
+                                        else:
+                                            score_color = "🟠"
+
+                                        with st.expander(f"{score_color} Result {idx} - Entry #{res['id']} (Relevance: {score:.1%})"):
+                                            st.markdown("**Content:**")
+                                            st.markdown(f"> {res['text']}")
+
+                                            col1, col2, col3 = st.columns(3)
+                                            with col1:
+                                                st.caption(f"📂 **Source:** {res.get('source', 'Unknown')}")
+                                            with col2:
+                                                st.caption(f"🕒 **Time:** {res.get('timestamp', 'N/A')[:19] if res.get('timestamp') else 'N/A'}")
+                                            with col3:
+                                                st.caption(f"📝 **Length:** {len(res['text'])} chars")
+                            else:
+                                st.error(f"Search failed: {response.status_code}")
                     except Exception as e:
                         st.error(f"Error during search: {e}")
             else:

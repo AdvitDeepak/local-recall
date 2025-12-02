@@ -59,13 +59,16 @@ class RAGQueryEngine:
             logger.error(f"Error in semantic search: {e}")
             return []
 
-    async def query_with_rag(self, query: str, model: Optional[str] = None) -> Dict[str, Any]:
+    async def query_with_rag(self, query: str, model: Optional[str] = None, k: Optional[int] = None) -> Dict[str, Any]:
         """Perform RAG-based query with LLM generation."""
         try:
+            # Use provided k or fall back to default max_context_snippets
+            num_results = k if k is not None else self.max_context_snippets
+
             # Perform semantic search
             search_results = await self.semantic_search(
                 query,
-                k=self.max_context_snippets
+                k=num_results
             )
 
             if not search_results:
@@ -141,6 +144,111 @@ class RAGQueryEngine:
                 "answer": f"Error processing query: {error_msg}",
                 "sources": [],
                 "query": query
+            }
+
+    async def query_with_rag_stream(self, query: str, model: Optional[str] = None, k: Optional[int] = None):
+        """Perform RAG-based query with LLM generation using streaming."""
+        try:
+            # Use provided k or fall back to default max_context_snippets
+            num_results = k if k is not None else self.max_context_snippets
+
+            # Perform semantic search
+            search_results = await self.semantic_search(
+                query,
+                k=num_results
+            )
+
+            if not search_results:
+                # Yield metadata first
+                yield {
+                    "type": "metadata",
+                    "sources": [],
+                    "query": query
+                }
+                # Yield answer
+                yield {
+                    "type": "answer",
+                    "content": "I don't have enough local context to answer this."
+                }
+                return
+
+            # Build context from search results
+            context_parts = []
+            sources = []
+            for i, result in enumerate(search_results):
+                context_parts.append(f"[{result['id']}] {result['text']}")
+                sources.append({
+                    "id": result["id"],
+                    "score": float(result["score"]),
+                    "source": result.get("source"),
+                    "timestamp": result.get("timestamp")
+                })
+
+            context = "\n\n".join(context_parts)
+
+            # Yield metadata first (sources)
+            yield {
+                "type": "metadata",
+                "sources": sources,
+                "query": query,
+                "model": model or self.llm_model
+            }
+
+            # Build prompt
+            system_prompt = (
+                "You are a factual, privacy-preserving assistant operating entirely on local data. "
+                "Answer the user's question using only the provided text snippets. "
+                "Do not invent details or access external sources. "
+                "If the context is insufficient, respond with: 'I don't have enough local context to answer this.' "
+                "Keep responses under 150 words and cite snippet IDs in brackets."
+            )
+
+            user_prompt = f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer:"
+
+            # Generate response using Ollama streaming
+            llm_model = model or self.llm_model
+            logger.info(f"Calling Ollama with streaming for model: {llm_model}")
+
+            loop = asyncio.get_event_loop()
+
+            # Stream response chunks
+            stream = ollama.chat(
+                model=llm_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                stream=True
+            )
+
+            for chunk in stream:
+                if 'message' in chunk and 'content' in chunk['message']:
+                    content = chunk['message']['content']
+                    yield {
+                        "type": "answer_chunk",
+                        "content": content
+                    }
+
+            # Signal completion
+            yield {
+                "type": "done"
+            }
+
+            logger.info(f"Completed streaming RAG response for query: {query}")
+
+        except Exception as e:
+            logger.error(f"Error in RAG streaming query: {e}")
+            error_msg = str(e)
+
+            # Provide helpful error messages
+            if "connection" in error_msg.lower() or "connect" in error_msg.lower():
+                error_msg = "Could not connect to Ollama. Make sure Ollama is running (start with: ollama serve)"
+            elif "model" in error_msg.lower() and "not found" in error_msg.lower():
+                error_msg = f"Model '{llm_model}' not found. Pull it with: ollama pull {llm_model}"
+
+            yield {
+                "type": "error",
+                "content": f"Error processing query: {error_msg}"
             }
 
 
