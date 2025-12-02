@@ -57,12 +57,12 @@ class CaptureService:
                     status="success"
                 )
             else:
-                print("⚠️  No text to capture from clipboard")
+                print("⚠️  No text to capture - make sure text is selected")
                 logger.debug("No text to capture")
                 notification_manager.add_notification(
                     type="capture_selected",
                     title="No Text Found",
-                    message="No text found in clipboard. Copy some text first.",
+                    message="No text found. Make sure text is selected before pressing the keybind.",
                     status="warning"
                 )
         except Exception as e:
