@@ -2,6 +2,7 @@
 import numpy as np
 import faiss
 import json
+import pickle  # Still needed for migration from legacy format
 import logging
 from pathlib import Path
 from typing import List, Tuple, Optional
@@ -40,13 +41,28 @@ class FAISSVectorStore:
         """Initialize or load FAISS index."""
         index_file = self.index_path / "index.faiss"
         id_map_file = self.index_path / "id_map.json"
+        legacy_id_map_file = self.index_path / "id_map.pkl"
 
-        if index_file.exists() and id_map_file.exists():
+        if index_file.exists():
             try:
                 self.index = faiss.read_index(str(index_file))
-                with open(id_map_file, "r", encoding="utf-8") as f:
-                    self.id_map = json.load(f)
-                logger.info(f"Loaded FAISS index with {len(self.id_map)} vectors")
+                
+                # Try new JSON format first
+                if id_map_file.exists():
+                    with open(id_map_file, "r", encoding="utf-8") as f:
+                        self.id_map = json.load(f)
+                    logger.info(f"Loaded FAISS index with {len(self.id_map)} vectors")
+                # Fall back to pickle for migration
+                elif legacy_id_map_file.exists():
+                    with open(legacy_id_map_file, "rb") as f:
+                        self.id_map = pickle.load(f)
+                    # Migrate to JSON format
+                    self.save()
+                    logger.info(f"Migrated id_map from pickle to JSON format ({len(self.id_map)} vectors)")
+                else:
+                    # Index exists but no id_map
+                    logger.warning("FAISS index exists but no id_map found, creating new index")
+                    self._create_new_index()
             except Exception as e:
                 logger.error(f"Error loading FAISS index: {e}")
                 self._create_new_index()
