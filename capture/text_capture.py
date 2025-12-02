@@ -52,7 +52,7 @@ class TextCapture:
                     return text.strip()
                 else:
                     # Text is same as before - might mean nothing was selected
-                    logger.info(f"Captured {len(text)} characters from clipboard (no new selection)")
+                    logger.info(f"Captured {len(text)} characters from selection (no new selection)")
                     return text.strip()
 
             logger.debug("No text in clipboard after copy attempt")
