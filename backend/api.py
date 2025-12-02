@@ -15,6 +15,7 @@ from database import db
 from embeddings import pipeline
 from rag import query_engine
 from vector_store import vector_store
+from capture.notifications import notification_manager
 from config import settings, ensure_directories
 
 
@@ -304,6 +305,52 @@ async def get_status():
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+# Notification endpoints
+@app.get("/notifications")
+async def get_notifications(
+    since_id: Optional[int] = None,
+    unread_only: bool = False,
+    limit: int = 10
+):
+    """Get recent notifications for capture events."""
+    try:
+        notifications = notification_manager.get_notifications(
+            since_id=since_id,
+            unread_only=unread_only,
+            limit=limit
+        )
+        return {"notifications": notifications}
+    except Exception as e:
+        logger.error(f"Error getting notifications: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/notifications/{notification_id}/read", response_model=StatusResponse)
+async def mark_notification_read(notification_id: int):
+    """Mark a notification as read."""
+    try:
+        success = notification_manager.mark_read(notification_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Notification not found")
+        return StatusResponse(status="success")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error marking notification as read: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/notifications/read-all", response_model=StatusResponse)
+async def mark_all_notifications_read():
+    """Mark all notifications as read."""
+    try:
+        notification_manager.mark_all_read()
+        return StatusResponse(status="success")
+    except Exception as e:
+        logger.error(f"Error marking all notifications as read: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

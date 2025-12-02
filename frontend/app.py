@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 import sys
 import json
+import time
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -23,6 +24,66 @@ def init_session_state():
     """Initialize session state variables."""
     if 'query_history' not in st.session_state:
         st.session_state.query_history = []
+    if 'last_notification_id' not in st.session_state:
+        st.session_state.last_notification_id = 0
+    if 'notifications_enabled' not in st.session_state:
+        st.session_state.notifications_enabled = True
+
+
+def fetch_new_notifications():
+    """Fetch new notifications from the API."""
+    try:
+        response = httpx.get(
+            f"{API_BASE}/notifications",
+            params={
+                "since_id": st.session_state.last_notification_id,
+                "unread_only": True,
+                "limit": 5
+            },
+            timeout=3
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("notifications", [])
+    except Exception:
+        pass
+    return []
+
+
+def display_notifications():
+    """Display notification toasts for capture events."""
+    if not st.session_state.notifications_enabled:
+        return
+
+    notifications = fetch_new_notifications()
+
+    for notif in notifications:
+        # Update the last seen notification ID
+        if notif["id"] > st.session_state.last_notification_id:
+            st.session_state.last_notification_id = notif["id"]
+
+        # Display notification based on status
+        status = notif.get("status", "info")
+        title = notif.get("title", "Notification")
+        message = notif.get("message", "")
+
+        # Format the notification message
+        full_message = f"**{title}**\n\n{message}"
+
+        if status == "success":
+            st.toast(full_message, icon="✅")
+        elif status == "warning":
+            st.toast(full_message, icon="⚠️")
+        elif status == "error":
+            st.toast(full_message, icon="❌")
+        else:
+            st.toast(full_message, icon="ℹ️")
+
+        # Mark notification as read
+        try:
+            httpx.post(f"{API_BASE}/notifications/{notif['id']}/read", timeout=2)
+        except Exception:
+            pass
 
 
 def parse_sse_stream(response):
@@ -79,6 +140,9 @@ def main():
 
     init_session_state()
 
+    # Display any new capture notifications as toasts
+    display_notifications()
+
     st.title("🧠 Local Recall Dashboard")
     st.markdown("*Privacy-preserving local text capture and RAG system*")
 
@@ -89,6 +153,19 @@ def main():
         status = get_status()
 
         if status:
+            # Notification toggle
+            st.session_state.notifications_enabled = st.checkbox(
+                "Show capture notifications",
+                value=st.session_state.notifications_enabled,
+                help="Display toast notifications when text is captured"
+            )
+
+            # Manual refresh button
+            if st.button("🔄 Refresh", use_container_width=True, help="Refresh to see latest captures"):
+                st.rerun()
+
+            st.divider()
+
             is_capturing = status.get('capturing', False)
 
             if is_capturing:
@@ -422,11 +499,14 @@ def main():
                         endpoint = "/keybind/selected" if action == "capture_selected" else "/keybind/screenshot"
                         response = httpx.post(
                             f"{API_BASE}{endpoint}",
-                            json={"key_sequence": key_seq}
+                            json={"action": action, "key_sequence": key_seq}
                         )
                         if response.status_code == 200:
-                            st.success("Keybind added")
+                            st.success(f"Keybind added: {key_seq} -> {action}")
+                            st.info("Note: Restart the capture service for new keybinds to take effect")
                             st.rerun()
+                        else:
+                            st.error(f"Failed to add keybind: {response.text}")
         except Exception as e:
             st.error(f"Error loading keybinds: {e}")
 
@@ -437,6 +517,47 @@ def main():
         st.code(f"LLM Model: {settings.LLM_MODEL}")
         st.code(f"Database: {settings.DATABASE_PATH}")
         st.code(f"FAISS Index: {settings.FAISS_INDEX_PATH}")
+
+        st.divider()
+
+        st.subheader("Recent Capture Activity")
+        st.caption("Shows recent capture events from the background service")
+
+        try:
+            notif_response = httpx.get(
+                f"{API_BASE}/notifications",
+                params={"limit": 10},
+                timeout=5
+            )
+            if notif_response.status_code == 200:
+                notifications = notif_response.json().get("notifications", [])
+
+                if notifications:
+                    for notif in notifications:
+                        status = notif.get("status", "info")
+                        title = notif.get("title", "")
+                        message = notif.get("message", "")
+                        timestamp = notif.get("timestamp", "")[:19] if notif.get("timestamp") else ""
+
+                        if status == "success":
+                            icon = "✅"
+                        elif status == "warning":
+                            icon = "⚠️"
+                        elif status == "error":
+                            icon = "❌"
+                        else:
+                            icon = "ℹ️"
+
+                        with st.expander(f"{icon} {title} ({timestamp})"):
+                            st.markdown(message)
+                else:
+                    st.info("No recent capture activity. Use Ctrl+Alt+R (text) or Ctrl+Alt+T (screenshot) to capture.")
+
+                if notifications and st.button("Clear All Notifications"):
+                    httpx.post(f"{API_BASE}/notifications/read-all", timeout=5)
+                    st.rerun()
+        except Exception as e:
+            st.warning(f"Could not load notifications: {e}")
 
 
 if __name__ == "__main__":
