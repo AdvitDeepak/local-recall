@@ -18,19 +18,47 @@ class TextCapture:
 
     @staticmethod
     def capture_selected() -> str:
-        """Capture text from clipboard (user should copy with Ctrl+C first)."""
+        """Capture currently selected text by programmatically copying it to clipboard."""
         try:
-            # Get current clipboard content
+            # Save the current clipboard content to restore later
+            original_clipboard = ""
+            try:
+                original_clipboard = pyperclip.paste()
+            except Exception:
+                pass  # Clipboard might be empty or contain non-text
+
+            # Programmatically press Ctrl+C to copy selected text
+            keyboard = KeyboardController()
+
+            # Small delay to ensure the keybind release is processed
+            time.sleep(0.05)
+
+            # Press Ctrl+C
+            keyboard.press(Key.ctrl)
+            keyboard.press('c')
+            keyboard.release('c')
+            keyboard.release(Key.ctrl)
+
+            # Wait for clipboard to update
+            time.sleep(0.15)
+
+            # Get the newly copied text
             text = pyperclip.paste()
 
             if text and isinstance(text, str) and text.strip():
-                logger.info(f"Captured {len(text)} characters from clipboard")
-                return text.strip()
+                # Check if we actually got new text (not the same as before)
+                if text.strip() != original_clipboard.strip() if original_clipboard else True:
+                    logger.info(f"Captured {len(text)} characters from selection")
+                    return text.strip()
+                else:
+                    # Text is same as before - might mean nothing was selected
+                    logger.info(f"Captured {len(text)} characters from clipboard (no new selection)")
+                    return text.strip()
 
-            logger.debug("No text in clipboard")
+            logger.debug("No text in clipboard after copy attempt")
             return ""
         except Exception as e:
-            logger.error(f"Error capturing clipboard text: {e}")
+            logger.error(f"Error capturing selected text: {e}")
             return ""
 
     @staticmethod
