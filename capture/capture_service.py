@@ -6,6 +6,7 @@ import httpx
 
 from capture.keybind_listener import keybind_listener
 from capture.text_capture import text_capture
+from capture.notifications import notification_manager
 from database import db
 from config import settings
 
@@ -29,6 +30,12 @@ class CaptureService:
             if not db.get_system_state().is_capturing:
                 logger.debug("Capture is paused, ignoring keybind")
                 print("⚠️  Capture is paused. Start capturing from dashboard first.")
+                notification_manager.add_notification(
+                    type="capture_selected",
+                    title="Capture Paused",
+                    message="Capture is paused. Start capturing from the dashboard first.",
+                    status="warning"
+                )
                 return
 
             text = text_capture.capture_selected()
@@ -41,12 +48,32 @@ class CaptureService:
                 )
                 print(f"✅ Captured selected text: entry {entry.id} ({len(text)} chars)")
                 logger.info(f"Captured selected text: entry {entry.id}")
+                # Add success notification
+                preview = text[:50] + "..." if len(text) > 50 else text
+                notification_manager.add_notification(
+                    type="capture_selected",
+                    title="Text Captured",
+                    message=f"Entry #{entry.id}: {len(text)} chars captured from clipboard. Preview: \"{preview}\"",
+                    status="success"
+                )
             else:
                 print("⚠️  No text to capture from clipboard")
                 logger.debug("No text to capture")
+                notification_manager.add_notification(
+                    type="capture_selected",
+                    title="No Text Found",
+                    message="No text found in clipboard. Copy some text first.",
+                    status="warning"
+                )
         except Exception as e:
             print(f"❌ Error capturing text: {e}")
             logger.error(f"Error in capture_selected callback: {e}")
+            notification_manager.add_notification(
+                type="capture_selected",
+                title="Capture Error",
+                message=f"Error capturing text: {str(e)}",
+                status="error"
+            )
 
     def _on_capture_screenshot(self):
         """Callback for capture screenshot keybind."""
@@ -57,6 +84,12 @@ class CaptureService:
             if not db.get_system_state().is_capturing:
                 logger.debug("Capture is paused, ignoring keybind")
                 print("⚠️  Capture is paused. Start capturing from dashboard first.")
+                notification_manager.add_notification(
+                    type="capture_screenshot",
+                    title="Capture Paused",
+                    message="Capture is paused. Start capturing from the dashboard first.",
+                    status="warning"
+                )
                 return
 
             text = text_capture.capture_screenshot()
@@ -69,12 +102,32 @@ class CaptureService:
                 )
                 print(f"✅ Captured screenshot text: entry {entry.id} ({len(text)} chars)")
                 logger.info(f"Captured screenshot text: entry {entry.id}")
+                # Add success notification
+                preview = text[:50] + "..." if len(text) > 50 else text
+                notification_manager.add_notification(
+                    type="capture_screenshot",
+                    title="Screenshot Captured",
+                    message=f"Entry #{entry.id}: {len(text)} chars captured via OCR. Preview: \"{preview}\"",
+                    status="success"
+                )
             else:
                 print("⚠️  No text found in screenshot")
                 logger.debug("No text found in screenshot")
+                notification_manager.add_notification(
+                    type="capture_screenshot",
+                    title="No Text Found",
+                    message="No text found in screenshot. Make sure there is visible text on screen.",
+                    status="warning"
+                )
         except Exception as e:
             print(f"❌ Error capturing screenshot: {e}")
             logger.error(f"Error in capture_screenshot callback: {e}")
+            notification_manager.add_notification(
+                type="capture_screenshot",
+                title="Screenshot Error",
+                message=f"Error capturing screenshot: {str(e)}",
+                status="error"
+            )
 
     def load_keybinds(self):
         """Load keybinds from database and register them."""
