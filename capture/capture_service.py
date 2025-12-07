@@ -69,13 +69,18 @@ class CaptureService:
                 )
                 print(f"    [DEBUG] Created notification ID: {notif.id}")
             else:
-                print("⚠️  No text to capture - make sure text is selected")
+                print("⚠️  No text to capture - make sure text is copied to clipboard")
                 logger.debug("No text to capture")
                 print("    [DEBUG] Adding warning notification to database...")
+                import platform
+                if platform.system() == 'Darwin':  # macOS
+                    message = "No text found in clipboard. On Mac: First copy text with Cmd+C, then press Cmd+Ctrl+R to capture."
+                else:
+                    message = "No text found. Make sure text is selected before pressing the keybind."
                 notif = db.add_notification(
                     type="capture_selected",
                     title="No Text Found",
-                    message="No text found. Make sure text is selected before pressing the keybind.",
+                    message=message,
                     status="warning"
                 )
                 print(f"    [DEBUG] Created notification ID: {notif.id}")
@@ -215,10 +220,15 @@ class CaptureService:
             existing = []
 
         if not existing:
-            # Add default keybinds
+            # Add default keybinds for Windows/Linux
             db.add_keybind("capture_selected", "<ctrl>+<alt>+r")
             db.add_keybind("capture_screenshot", "<ctrl>+<alt>+t")
-            logger.info("Added default keybinds: Ctrl+Alt+R (selected) and Ctrl+Alt+T (screenshot)")
+            # Add Mac-friendly keybinds
+            db.add_keybind("capture_selected", "<cmd>+<ctrl>+r")
+            db.add_keybind("capture_screenshot", "<cmd>+<ctrl>+t")
+            logger.info("Added default keybinds:")
+            logger.info("  Windows/Linux: Ctrl+Alt+R (selected) and Ctrl+Alt+T (screenshot)")
+            logger.info("  Mac: Cmd+Ctrl+R (selected) and Cmd+Ctrl+T (screenshot)")
 
 
 # Global capture service instance

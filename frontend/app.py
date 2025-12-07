@@ -244,6 +244,15 @@ def main():
     st.title("🧠 Local Recall Dashboard")
     st.markdown("*Privacy-preserving local text capture and RAG system*")
 
+    st.markdown("""
+    **How it works:** Local Recall streamlines your workflow by capturing text and screenshots directly from any application
+    using convenient keyboard shortcuts. Instead of repeatedly copying text or uploading screenshots to your LLM, simply press
+    the configured keybind to instantly save content to your local knowledge base. The captured information is automatically
+    embedded and indexed, making it immediately searchable through semantic queries. When you ask a question, the RAG system
+    retrieves the most relevant context from your captured data and provides AI-powered answers—all while keeping your data
+    private and local.
+    """)
+
     # Sidebar for system control and stats
     with st.sidebar:
         st.header("System Control")

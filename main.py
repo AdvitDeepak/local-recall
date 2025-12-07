@@ -41,8 +41,12 @@ def run_capture_service():
 
         logger.info("Capture service is running. Press Ctrl+C to stop.")
         logger.info(f"Default keybinds:")
-        logger.info("  - Ctrl+Alt+R: Capture selected text")
-        logger.info("  - Ctrl+Alt+T: Capture screenshot text")
+        logger.info("  Windows/Linux:")
+        logger.info("    - Ctrl+Alt+R: Capture selected text")
+        logger.info("    - Ctrl+Alt+T: Capture screenshot text")
+        logger.info("  Mac:")
+        logger.info("    - Cmd+Ctrl+R: Capture selected text")
+        logger.info("    - Cmd+Ctrl+T: Capture screenshot text")
 
         # Keep running
         while True:

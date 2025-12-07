@@ -11,8 +11,14 @@ from pynput.keyboard import Controller as KeyboardController, Key
 import time
 import ctypes
 import threading
+import platform
+import subprocess
 
 logger = logging.getLogger(__name__)
+
+# Detect operating system
+IS_MAC = platform.system() == 'Darwin'
+IS_WINDOWS = platform.system() == 'Windows'
 
 # Windows API for sending keystrokes more reliably
 if hasattr(ctypes, 'windll'):
@@ -52,6 +58,28 @@ class TextCapture:
         """Capture currently selected text by programmatically copying it to clipboard."""
         print("\n    [DEBUG] === capture_selected() called ===")
         try:
+            # On macOS, due to accessibility restrictions, we use a clipboard-only approach
+            # User should copy text with Cmd+C first, then press the capture keybind
+            if IS_MAC:
+                print("    [DEBUG] macOS: Reading directly from clipboard")
+                print("    [DEBUG] Note: User should manually copy text with Cmd+C before pressing keybind")
+                try:
+                    text = pyperclip.paste()
+                    print(f"    [DEBUG] Clipboard content: {repr(text[:100] if text else 'EMPTY')}...")
+                    if text and isinstance(text, str) and text.strip():
+                        print(f"    [DEBUG] SUCCESS! Captured {len(text)} characters from clipboard")
+                        logger.info(f"Captured {len(text)} characters from clipboard")
+                        return text.strip()
+                    else:
+                        print("    [DEBUG] FAILED - No text in clipboard")
+                        logger.debug("No text in clipboard - user should copy text first with Cmd+C")
+                        return ""
+                except Exception as e:
+                    print(f"    [DEBUG] EXCEPTION reading clipboard: {e}")
+                    logger.error(f"Error reading clipboard: {e}")
+                    return ""
+
+            # For Windows/Linux, use the automatic copy approach
             # Check clipboard before clearing
             try:
                 before_clear = pyperclip.paste()
@@ -74,12 +102,34 @@ class TextCapture:
             except Exception as e:
                 print(f"    [DEBUG] Error verifying clipboard clear: {e}")
 
-            # Wait for user to release the hotkey (Ctrl+Alt+R)
+            # Wait for user to release the hotkey
             print("    [DEBUG] Waiting 0.5s for hotkey release...")
             time.sleep(0.5)
 
-            # Use Windows API if available (more reliable)
-            if send_ctrl_c_windows:
+            # Use different methods based on OS
+            if IS_MAC:
+                # On macOS, use AppleScript for more reliable clipboard access
+                print("    [DEBUG] Using AppleScript method for macOS")
+                try:
+                    applescript = '''
+                    tell application "System Events"
+                        keystroke "c" using command down
+                    end tell
+                    '''
+                    subprocess.run(['osascript', '-e', applescript], check=True, capture_output=True)
+                    print("    [DEBUG] AppleScript Cmd+C executed")
+                except Exception as e:
+                    print(f"    [DEBUG] AppleScript failed: {e}, falling back to pynput")
+                    # Fallback to pynput
+                    keyboard = KeyboardController()
+                    keyboard.press(Key.cmd)
+                    time.sleep(0.05)
+                    keyboard.press('c')
+                    time.sleep(0.05)
+                    keyboard.release('c')
+                    time.sleep(0.05)
+                    keyboard.release(Key.cmd)
+            elif send_ctrl_c_windows and IS_WINDOWS:
                 print("    [DEBUG] Using Windows API method")
                 send_ctrl_c_windows()
             else:
@@ -94,7 +144,7 @@ class TextCapture:
                     keyboard.release(Key.ctrl_r)
                     keyboard.release(Key.alt_l)
                     keyboard.release(Key.alt_r)
-                    print("    [DEBUG] Released modifier keys")
+                    print("    [DEBUG] Released Windows/Linux modifier keys")
                 except Exception as e:
                     print(f"    [DEBUG] Error releasing modifiers: {e}")
 
