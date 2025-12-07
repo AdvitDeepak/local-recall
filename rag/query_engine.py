@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 import ollama
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from openai import AsyncOpenAI
 
 from database import db
 from vector_store import vector_store
@@ -16,6 +17,9 @@ logger = logging.getLogger(__name__)
 # Thread pool for blocking Ollama calls
 executor = ThreadPoolExecutor(max_workers=2)
 
+# OpenAI client (initialized if API key is available)
+openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
+
 
 class RAGQueryEngine:
     """RAG-based query engine for local data."""
@@ -24,6 +28,11 @@ class RAGQueryEngine:
         """Initialize RAG query engine."""
         self.max_context_snippets = settings.MAX_CONTEXT_SNIPPETS
         self.llm_model = settings.LLM_MODEL
+
+    def _is_openai_model(self, model: str) -> bool:
+        """Check if the model is an OpenAI model."""
+        openai_prefixes = ["gpt-", "o1-", "o3-"]
+        return any(model.startswith(prefix) for prefix in openai_prefixes)
 
     async def semantic_search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
         """Perform semantic search over stored data."""
@@ -103,23 +112,48 @@ class RAGQueryEngine:
 
             user_prompt = f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer:"
 
-            # Generate response using Ollama (run in thread pool since it's blocking)
+            # Generate response using the appropriate LLM provider
             llm_model = model or self.llm_model
-            logger.info(f"Calling Ollama with model: {llm_model}")
 
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                executor,
-                lambda: ollama.chat(
+            if self._is_openai_model(llm_model):
+                # Use OpenAI API
+                if not openai_client:
+                    return {
+                        "answer": "OpenAI API key not configured. Please set OPENAI_API_KEY in your environment.",
+                        "sources": sources,
+                        "query": query
+                    }
+
+                logger.info(f"Calling OpenAI API with model: {llm_model}")
+
+                response = await openai_client.chat.completions.create(
                     model=llm_model,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
-                    ]
+                    ],
+                    temperature=0.7,
+                    max_tokens=500
                 )
-            )
 
-            answer = response['message']['content']
+                answer = response.choices[0].message.content
+            else:
+                # Use Ollama (run in thread pool since it's blocking)
+                logger.info(f"Calling Ollama with model: {llm_model}")
+
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    executor,
+                    lambda: ollama.chat(
+                        model=llm_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ]
+                    )
+                )
+
+                answer = response['message']['content']
 
             logger.info(f"Generated RAG response for query: {query}")
 
@@ -205,29 +239,61 @@ class RAGQueryEngine:
 
             user_prompt = f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer:"
 
-            # Generate response using Ollama streaming
+            # Generate response using the appropriate LLM provider with streaming
             llm_model = model or self.llm_model
-            logger.info(f"Calling Ollama with streaming for model: {llm_model}")
 
-            loop = asyncio.get_event_loop()
-
-            # Stream response chunks
-            stream = ollama.chat(
-                model=llm_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                stream=True
-            )
-
-            for chunk in stream:
-                if 'message' in chunk and 'content' in chunk['message']:
-                    content = chunk['message']['content']
+            if self._is_openai_model(llm_model):
+                # Use OpenAI API streaming
+                if not openai_client:
                     yield {
-                        "type": "answer_chunk",
-                        "content": content
+                        "type": "error",
+                        "content": "OpenAI API key not configured. Please set OPENAI_API_KEY in your environment."
                     }
+                    return
+
+                logger.info(f"Calling OpenAI API with streaming for model: {llm_model}")
+
+                stream = await openai_client.chat.completions.create(
+                    model=llm_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=500,
+                    stream=True
+                )
+
+                async for chunk in stream:
+                    if chunk.choices[0].delta.content is not None:
+                        content = chunk.choices[0].delta.content
+                        yield {
+                            "type": "answer_chunk",
+                            "content": content
+                        }
+            else:
+                # Use Ollama streaming
+                logger.info(f"Calling Ollama with streaming for model: {llm_model}")
+
+                loop = asyncio.get_event_loop()
+
+                # Stream response chunks (Ollama is blocking, so run in executor)
+                stream = ollama.chat(
+                    model=llm_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    stream=True
+                )
+
+                for chunk in stream:
+                    if 'message' in chunk and 'content' in chunk['message']:
+                        content = chunk['message']['content']
+                        yield {
+                            "type": "answer_chunk",
+                            "content": content
+                        }
 
             # Signal completion
             yield {
