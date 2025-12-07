@@ -168,11 +168,20 @@ class RAGQueryEngine:
             logger.error(f"Error in RAG query: {e}")
             error_msg = str(e)
 
-            # Provide helpful error messages
-            if "connection" in error_msg.lower() or "connect" in error_msg.lower():
-                error_msg = "Could not connect to Ollama. Make sure Ollama is running (start with: ollama serve)"
-            elif "model" in error_msg.lower() and "not found" in error_msg.lower():
-                error_msg = f"Model '{llm_model}' not found. Pull it with: ollama pull {llm_model}"
+            # Provide helpful error messages based on model type
+            llm_model = model or self.llm_model
+            if self._is_openai_model(llm_model):
+                # OpenAI-specific error messages
+                if "api_key" in error_msg.lower() or "authentication" in error_msg.lower() or "unauthorized" in error_msg.lower():
+                    error_msg = "OpenAI API key not configured or invalid. Please set OPENAI_API_KEY in your environment."
+                else:
+                    error_msg = f"OpenAI API error: {error_msg}. Make sure your API key is set in the environment."
+            else:
+                # Ollama-specific error messages
+                if "connection" in error_msg.lower() or "connect" in error_msg.lower():
+                    error_msg = "Could not connect to Ollama. Make sure Ollama is running (start with: ollama serve)"
+                elif "model" in error_msg.lower() and "not found" in error_msg.lower():
+                    error_msg = f"Model '{llm_model}' not found. Pull it with: ollama pull {llm_model}"
 
             return {
                 "answer": f"Error processing query: {error_msg}",
@@ -306,11 +315,20 @@ class RAGQueryEngine:
             logger.error(f"Error in RAG streaming query: {e}")
             error_msg = str(e)
 
-            # Provide helpful error messages
-            if "connection" in error_msg.lower() or "connect" in error_msg.lower():
-                error_msg = "Could not connect to Ollama. Make sure Ollama is running (start with: ollama serve)"
-            elif "model" in error_msg.lower() and "not found" in error_msg.lower():
-                error_msg = f"Model '{llm_model}' not found. Pull it with: ollama pull {llm_model}"
+            # Provide helpful error messages based on model type
+            llm_model = model or self.llm_model
+            if self._is_openai_model(llm_model):
+                # OpenAI-specific error messages
+                if "api_key" in error_msg.lower() or "authentication" in error_msg.lower() or "unauthorized" in error_msg.lower():
+                    error_msg = "OpenAI API key not configured or invalid. Please set OPENAI_API_KEY in your environment."
+                else:
+                    error_msg = f"OpenAI API error: {error_msg}. Make sure your API key is set in the environment."
+            else:
+                # Ollama-specific error messages
+                if "connection" in error_msg.lower() or "connect" in error_msg.lower():
+                    error_msg = "Could not connect to Ollama. Make sure Ollama is running (start with: ollama serve)"
+                elif "model" in error_msg.lower() and "not found" in error_msg.lower():
+                    error_msg = f"Model '{llm_model}' not found. Pull it with: ollama pull {llm_model}"
 
             yield {
                 "type": "error",

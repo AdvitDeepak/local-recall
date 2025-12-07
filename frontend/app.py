@@ -30,6 +30,8 @@ def init_session_state():
         st.session_state.notifications_enabled = True
     if 'last_poll_time' not in st.session_state:
         st.session_state.last_poll_time = 0
+    if 'last_entry_count' not in st.session_state:
+        st.session_state.last_entry_count = 0
 
 
 def fetch_new_notifications():
@@ -101,6 +103,7 @@ def auto_refresh_notifications():
         return
 
     # Check if there are new notifications
+    has_new_success = False
     try:
         response = httpx.get(
             f"{API_BASE}/notifications",
@@ -125,6 +128,10 @@ def auto_refresh_notifications():
                 title = notif.get("title", "Notification")
                 message = notif.get("message", "")
 
+                # Check if this is a successful capture
+                if status == "success":
+                    has_new_success = True
+
                 # Use st.toast for popup notifications
                 full_message = f"**{title}**\n\n{message}"
 
@@ -142,6 +149,10 @@ def auto_refresh_notifications():
                     httpx.post(f"{API_BASE}/notifications/{notif['id']}/read", timeout=2)
                 except Exception:
                     pass
+
+            # If there was a successful capture, trigger a rerun to update statistics
+            if has_new_success:
+                st.rerun()
     except Exception as e:
         pass
 
