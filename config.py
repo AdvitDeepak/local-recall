@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "nomic-embed-text"
     LLM_MODEL: str = "llama3.1:8b"
 
+    # OpenAI Configuration
+    OPENAI_API_KEY: str = ""  # Set via environment variable
+    OPENAI_MODEL: str = "gpt-4o-mini"  # Default OpenAI model
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+
     # Server Configuration
     BACKEND_PORT: int = 8000
     FRONTEND_PORT: int = 8501

@@ -30,6 +30,8 @@ def init_session_state():
         st.session_state.notifications_enabled = True
     if 'last_poll_time' not in st.session_state:
         st.session_state.last_poll_time = 0
+    if 'last_entry_count' not in st.session_state:
+        st.session_state.last_entry_count = 0
 
 
 def fetch_new_notifications():
@@ -101,6 +103,7 @@ def auto_refresh_notifications():
         return
 
     # Check if there are new notifications
+    has_new_success = False
     try:
         response = httpx.get(
             f"{API_BASE}/notifications",
@@ -125,6 +128,10 @@ def auto_refresh_notifications():
                 title = notif.get("title", "Notification")
                 message = notif.get("message", "")
 
+                # Check if this is a successful capture
+                if status == "success":
+                    has_new_success = True
+
                 # Use st.toast for popup notifications
                 full_message = f"**{title}**\n\n{message}"
 
@@ -142,6 +149,10 @@ def auto_refresh_notifications():
                     httpx.post(f"{API_BASE}/notifications/{notif['id']}/read", timeout=2)
                 except Exception:
                     pass
+
+            # If there was a successful capture, trigger a rerun to update statistics
+            if has_new_success:
+                st.rerun()
     except Exception as e:
         pass
 
@@ -317,7 +328,7 @@ def main():
 
         query = st.text_input("Enter your query:", placeholder="What are you looking for?")
 
-        col1, col2, col3 = st.columns([1, 1, 1])
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
 
         with col1:
             use_rag = st.checkbox("Use RAG (LLM-powered answers)", value=True)
@@ -328,6 +339,32 @@ def main():
         with col3:
             use_streaming = st.checkbox("Stream responses", value=True, help="Display answers as they are generated")
 
+        with col4:
+            # Model selection
+            model_options = [
+                settings.LLM_MODEL,  # Default Ollama model
+                "llama3.1:8b",
+                "llama3:latest",
+                "mistral:latest",
+                "gpt-4o-mini",
+                "gpt-4o",
+                "gpt-3.5-turbo"
+            ]
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_models = []
+            for model in model_options:
+                if model not in seen:
+                    seen.add(model)
+                    unique_models.append(model)
+
+            selected_model = st.selectbox(
+                "Model",
+                unique_models,
+                index=0,
+                help="Select Ollama (local) or OpenAI model"
+            )
+
         if st.button("🔍 Search", type="primary", use_container_width=True):
             if query:
                 with st.spinner("Searching..."):
@@ -337,7 +374,7 @@ def main():
                             with httpx.stream(
                                 "POST",
                                 f"{API_BASE}/query/stream",
-                                json={"query": query, "model": settings.LLM_MODEL, "k": num_results},
+                                json={"query": query, "model": selected_model, "k": num_results},
                                 timeout=120
                             ) as response:
                                 if response.status_code == 200:
@@ -406,7 +443,7 @@ def main():
                         elif use_rag:
                             response = httpx.post(
                                 f"{API_BASE}/query",
-                                json={"query": query, "model": settings.LLM_MODEL, "k": num_results},
+                                json={"query": query, "model": selected_model, "k": num_results},
                                 timeout=120
                             )
                             if response.status_code == 200:
@@ -640,9 +677,22 @@ def main():
 
         st.subheader("Configuration")
         st.code(f"Embedding Model: {settings.EMBEDDING_MODEL}")
-        st.code(f"LLM Model: {settings.LLM_MODEL}")
+        st.code(f"LLM Model (Default): {settings.LLM_MODEL}")
         st.code(f"Database: {settings.DATABASE_PATH}")
         st.code(f"FAISS Index: {settings.FAISS_INDEX_PATH}")
+
+        st.divider()
+
+        st.subheader("OpenAI API Configuration")
+        st.info("To use OpenAI models (gpt-4o, gpt-4o-mini, etc.), set your OPENAI_API_KEY environment variable.")
+
+        if settings.OPENAI_API_KEY:
+            st.success("✅ OpenAI API key is configured")
+            st.caption(f"Using model: {settings.OPENAI_MODEL}")
+        else:
+            st.warning("⚠️ OpenAI API key not configured")
+            st.caption("Set OPENAI_API_KEY in your .env file or environment variables to enable OpenAI models")
+            st.code('OPENAI_API_KEY="sk-..."', language="bash")
 
         st.divider()
 
