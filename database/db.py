@@ -1,5 +1,5 @@
 """Database management for Local Recall."""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from sqlalchemy import create_engine, desc, or_
@@ -8,7 +8,7 @@ from contextlib import contextmanager
 import logging
 
 from database.models import Base, DataEntry, Keybind, SystemState, Notification
-from config import settings, PST
+from config import settings
 
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class Database:
                 source=source,
                 capture_method=capture_method,
                 tags=",".join(tags) if tags else None,
-                timestamp=datetime.now(PST)
+                timestamp=datetime.now(timezone.utc)
             )
             session.add(entry)
             session.flush()
@@ -184,9 +184,9 @@ class Database:
             if state:
                 state.is_capturing = is_capturing
                 if is_capturing:
-                    state.last_started = datetime.now(PST)
+                    state.last_started = datetime.now(timezone.utc)
                 else:
-                    state.last_stopped = datetime.now(PST)
+                    state.last_stopped = datetime.now(timezone.utc)
 
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics."""
@@ -214,7 +214,7 @@ class Database:
                 title=title,
                 message=message,
                 status=status,
-                timestamp=datetime.now(PST)
+                timestamp=datetime.now(timezone.utc)
             )
             session.add(notification)
             session.flush()

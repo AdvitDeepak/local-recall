@@ -85,6 +85,8 @@ app = FastAPI(
 ALLOWED_ORIGINS = [
     "http://localhost:8501",  # Streamlit frontend
     "http://127.0.0.1:8501",
+    "http://localhost:3000",  # Next.js frontend
+    "http://127.0.0.1:3000",
     f"http://localhost:{settings.FRONTEND_PORT}",
     f"http://127.0.0.1:{settings.FRONTEND_PORT}",
 ]
@@ -256,6 +258,38 @@ async def query_data_stream(request: QueryRequest):
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error processing streaming query: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# GET version for EventSource compatibility
+@app.get("/query/stream")
+async def query_data_stream_get(query: str, model: str, k: int = 5):
+    """Perform RAG query with streaming response (GET for EventSource)."""
+    try:
+        if not model:
+            raise HTTPException(status_code=400, detail="Streaming requires a model to be specified")
+
+        async def event_generator():
+            """Generate Server-Sent Events."""
+            async for chunk in query_engine.query_with_rag_stream(
+                query=query,
+                model=model,
+                k=k
+            ):
+                # Format as SSE
+                yield f"data: {json.dumps(chunk)}\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
             }
         )
     except Exception as e:

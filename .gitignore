@@ -42,3 +42,7 @@ temp_*
 
 # Streamlit
 .streamlit/
+
+# Node
+node_modules/
+.next/
