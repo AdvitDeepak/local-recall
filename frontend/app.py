@@ -543,7 +543,11 @@ def main():
                 help="Filter entries by capture method"
             )
         with col2:
-            filter_tag = st.text_input("Filter by tag:", placeholder="e.g., important")
+            filter_tag = st.text_input(
+                "Filter by tag:",
+                placeholder="e.g., important",
+                help="Note: Tags are only available for uploaded documents. Clipboard and screenshot captures do not have tags."
+            )
         with col3:
             limit = st.number_input("Limit", min_value=10, max_value=500, value=50)
 
