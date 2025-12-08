@@ -92,8 +92,15 @@ Local Recall is a lightweight background tool that automatically captures and co
 
 ### Default Keybinds
 
+#### Windows/Linux
 - **Ctrl+Alt+R**: Capture selected text (copies from clipboard)
 - **Ctrl+Alt+T**: Capture screenshot text (OCR)
+
+#### macOS
+- **Cmd+Ctrl+R**: Capture selected text (copies from clipboard)
+- **Cmd+Ctrl+T**: Capture screenshot text (OCR)
+
+**Note for macOS users**: Due to system accessibility restrictions, you need to manually copy text with **Cmd+C** first, then press **Cmd+Ctrl+R** to capture it.
 
 ### Dashboard
 

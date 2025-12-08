@@ -536,7 +536,12 @@ def main():
         # Filters
         col1, col2, col3 = st.columns(3)
         with col1:
-            filter_source = st.text_input("Filter by source:", placeholder="e.g., clipboard")
+            filter_source = st.selectbox(
+                "Filter by source:",
+                options=["All", "clipboard", "screenshot"],
+                index=0,
+                help="Filter entries by capture method"
+            )
         with col2:
             filter_tag = st.text_input("Filter by tag:", placeholder="e.g., important")
         with col3:
@@ -545,7 +550,7 @@ def main():
         if st.button("Load Entries", use_container_width=True):
             try:
                 params = {"limit": limit}
-                if filter_source:
+                if filter_source and filter_source != "All":
                     params["source"] = filter_source
                 if filter_tag:
                     params["tag"] = filter_tag
@@ -639,37 +644,77 @@ def main():
         st.subheader("Keybinds")
         st.info("Keybinds allow you to quickly capture text without leaving your workflow")
 
+        # Platform-specific keybind tabs
+        keybind_tab1, keybind_tab2 = st.tabs(["🍎 macOS", "🪟 Windows/Linux"])
+
         try:
             keybinds_response = httpx.get(f"{API_BASE}/keybinds", timeout=5)
             if keybinds_response.status_code == 200:
                 keybinds = keybinds_response.json()
 
-                if keybinds:
-                    for kb in keybinds:
-                        st.code(f"{kb['action']}: {kb['key_sequence']}")
-                else:
-                    st.warning("No keybinds configured")
+                # Separate keybinds by platform
+                mac_keybinds = [kb for kb in keybinds if "<cmd>" in kb['key_sequence']]
+                windows_linux_keybinds = [kb for kb in keybinds if "<ctrl>" in kb['key_sequence'] and "<cmd>" not in kb['key_sequence']]
 
-                st.markdown("**Add New Keybind**")
-                col1, col2 = st.columns(2)
-                with col1:
-                    action = st.selectbox("Action", ["capture_selected", "capture_screenshot"])
-                with col2:
-                    key_seq = st.text_input("Key Sequence", placeholder="<ctrl>+<alt>+r")
+                with keybind_tab1:
+                    st.markdown("**macOS Keybinds**")
+                    if mac_keybinds:
+                        for kb in mac_keybinds:
+                            action_name = "Capture Selected Text" if kb['action'] == "capture_selected" else "Capture Screenshot"
+                            st.code(f"{action_name}: {kb['key_sequence']}")
+                    else:
+                        st.warning("No macOS keybinds configured")
 
-                if st.button("Add Keybind"):
-                    if key_seq:
-                        endpoint = "/keybind/selected" if action == "capture_selected" else "/keybind/screenshot"
-                        response = httpx.post(
-                            f"{API_BASE}{endpoint}",
-                            json={"key_sequence": key_seq}
-                        )
-                        if response.status_code == 200:
-                            st.success(f"Keybind added: {key_seq} -> {action}")
-                            st.info("Note: Restart the capture service for new keybinds to take effect")
-                            st.rerun()
-                        else:
-                            st.error(f"Failed to add keybind: {response.text}")
+                    st.markdown("**Add New macOS Keybind**")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        action_mac = st.selectbox("Action", ["capture_selected", "capture_screenshot"], key="mac_action")
+                    with col2:
+                        key_seq_mac = st.text_input("Key Sequence", placeholder="<cmd>+<ctrl>+r", key="mac_key")
+
+                    if st.button("Add macOS Keybind"):
+                        if key_seq_mac:
+                            endpoint = "/keybind/selected" if action_mac == "capture_selected" else "/keybind/screenshot"
+                            response = httpx.post(
+                                f"{API_BASE}{endpoint}",
+                                json={"key_sequence": key_seq_mac}
+                            )
+                            if response.status_code == 200:
+                                st.success(f"Keybind added: {key_seq_mac} -> {action_mac}")
+                                st.info("Note: Restart the capture service for new keybinds to take effect")
+                                st.rerun()
+                            else:
+                                st.error(f"Failed to add keybind: {response.text}")
+
+                with keybind_tab2:
+                    st.markdown("**Windows/Linux Keybinds**")
+                    if windows_linux_keybinds:
+                        for kb in windows_linux_keybinds:
+                            action_name = "Capture Selected Text" if kb['action'] == "capture_selected" else "Capture Screenshot"
+                            st.code(f"{action_name}: {kb['key_sequence']}")
+                    else:
+                        st.warning("No Windows/Linux keybinds configured")
+
+                    st.markdown("**Add New Windows/Linux Keybind**")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        action_win = st.selectbox("Action", ["capture_selected", "capture_screenshot"], key="win_action")
+                    with col2:
+                        key_seq_win = st.text_input("Key Sequence", placeholder="<ctrl>+<alt>+r", key="win_key")
+
+                    if st.button("Add Windows/Linux Keybind"):
+                        if key_seq_win:
+                            endpoint = "/keybind/selected" if action_win == "capture_selected" else "/keybind/screenshot"
+                            response = httpx.post(
+                                f"{API_BASE}{endpoint}",
+                                json={"key_sequence": key_seq_win}
+                            )
+                            if response.status_code == 200:
+                                st.success(f"Keybind added: {key_seq_win} -> {action_win}")
+                                st.info("Note: Restart the capture service for new keybinds to take effect")
+                                st.rerun()
+                            else:
+                                st.error(f"Failed to add keybind: {response.text}")
         except Exception as e:
             st.error(f"Error loading keybinds: {e}")
 
