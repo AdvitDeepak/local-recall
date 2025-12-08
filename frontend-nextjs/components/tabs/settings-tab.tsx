@@ -9,10 +9,15 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  Plus,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 import { api } from "@/lib/api"
 import { useToast } from "@/lib/hooks/use-toast"
 import type { Keybind } from "@/lib/types"
@@ -21,6 +26,9 @@ export function SettingsTab() {
   const [keybinds, setKeybinds] = useState<Keybind[]>([])
   const [loading, setLoading] = useState(true)
   const [platform, setPlatform] = useState<"macos" | "windows">("macos")
+  const [newKeySequence, setNewKeySequence] = useState("")
+  const [newAction, setNewAction] = useState("capture_selected")
+  const [adding, setAdding] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -52,9 +60,16 @@ export function SettingsTab() {
     }
   }
 
-  const platformKeybinds = keybinds.filter(
-    (kb) => kb.platform === platform || kb.platform === "all"
-  )
+  const platformKeybinds = keybinds.filter((kb) => {
+    const isMacOS = kb.key_sequence.includes("<cmd>")
+    const isWindowsLinux = kb.key_sequence.includes("<ctrl>") && !kb.key_sequence.includes("<cmd>")
+
+    if (platform === "macos") {
+      return isMacOS
+    } else {
+      return isWindowsLinux
+    }
+  })
 
   const getActionLabel = (action: string) => {
     const labels: Record<string, string> = {
@@ -62,6 +77,44 @@ export function SettingsTab() {
       capture_screenshot: "Capture Screenshot",
     }
     return labels[action] || action
+  }
+
+  const handleAddKeybind = async () => {
+    if (!newKeySequence) {
+      toast({
+        title: "Error",
+        description: "Please enter a key sequence",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setAdding(true)
+    try {
+      let keybind: Keybind
+      if (newAction === "capture_selected") {
+        keybind = await api.addSelectedTextKeybind(newKeySequence)
+      } else {
+        keybind = await api.addScreenshotKeybind(newKeySequence)
+      }
+
+      setKeybinds([...keybinds, keybind])
+      setNewKeySequence("")
+      setNewAction("capture_selected")
+
+      toast({
+        title: "Success",
+        description: "Keybind added successfully. Restart the capture service for changes to take effect.",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add keybind",
+        variant: "destructive",
+      })
+    } finally {
+      setAdding(false)
+    }
   }
 
   return (
@@ -148,6 +201,52 @@ export function SettingsTab() {
                       </div>
                     ))
                   )}
+
+                  <div className="mt-6 p-4 border rounded-lg space-y-4">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Plus className="h-4 w-4" />
+                      Add New macOS Keybind
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="action-mac">Action</Label>
+                        <Select
+                          id="action-mac"
+                          value={newAction}
+                          onChange={(e) => setNewAction(e.target.value)}
+                        >
+                          <option value="capture_selected">Capture Selected Text</option>
+                          <option value="capture_screenshot">Capture Screenshot</option>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="key-mac">Key Sequence</Label>
+                        <Input
+                          id="key-mac"
+                          placeholder="<cmd>+<ctrl>+r"
+                          value={newKeySequence}
+                          onChange={(e) => setNewKeySequence(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      onClick={handleAddKeybind}
+                      disabled={adding}
+                      className="w-full"
+                    >
+                      {adding ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Adding...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Keybind
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
 
@@ -175,6 +274,52 @@ export function SettingsTab() {
                       </div>
                     ))
                   )}
+
+                  <div className="mt-6 p-4 border rounded-lg space-y-4">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Plus className="h-4 w-4" />
+                      Add New Windows/Linux Keybind
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="action-win">Action</Label>
+                        <Select
+                          id="action-win"
+                          value={newAction}
+                          onChange={(e) => setNewAction(e.target.value)}
+                        >
+                          <option value="capture_selected">Capture Selected Text</option>
+                          <option value="capture_screenshot">Capture Screenshot</option>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="key-win">Key Sequence</Label>
+                        <Input
+                          id="key-win"
+                          placeholder="<ctrl>+<alt>+r"
+                          value={newKeySequence}
+                          onChange={(e) => setNewKeySequence(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      onClick={handleAddKeybind}
+                      disabled={adding}
+                      className="w-full"
+                    >
+                      {adding ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Adding...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Keybind
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>

@@ -47,11 +47,28 @@ export function SearchTab() {
           eventSource.onmessage = (event) => {
             const data = JSON.parse(event.data)
 
-            if (data.type === "token") {
+            if (data.type === "answer_chunk") {
               setStreamingAnswer((prev) => prev + data.content)
-            } else if (data.type === "sources") {
-              setSearchResults(data.content)
+            } else if (data.type === "metadata") {
+              // Transform backend format to frontend format
+              const transformedSources = data.sources.map((source: any) => ({
+                entry: {
+                  id: source.id,
+                  source: source.source,
+                  timestamp: source.timestamp
+                },
+                relevance_score: source.score
+              }))
+              setSearchResults(transformedSources)
             } else if (data.type === "done") {
+              setLoading(false)
+              eventSource.close()
+            } else if (data.type === "error") {
+              toast({
+                title: "Error",
+                description: data.content || "Streaming failed",
+                variant: "destructive"
+              })
               setLoading(false)
               eventSource.close()
             }
@@ -200,27 +217,37 @@ export function SearchTab() {
                         </span>
                       </div>
 
-                      <p className="text-sm leading-relaxed mb-2">
-                        {result.entry.text.length > 300
-                          ? result.entry.text.substring(0, 300) + "..."
-                          : result.entry.text}
-                      </p>
+                      {result.entry.content && (
+                        <>
+                          <p className="text-sm leading-relaxed mb-2">
+                            {result.entry.content.length > 300
+                              ? result.entry.content.substring(0, 300) + "..."
+                              : result.entry.content}
+                          </p>
 
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{result.entry.char_count} characters</span>
-                        {result.entry.tags && result.entry.tags.length > 0 && (
-                          <>
-                            <span>•</span>
-                            <div className="flex gap-1">
-                              {result.entry.tags.map((tag) => (
-                                <Badge key={tag} variant="secondary" className="text-xs">
-                                  {tag}
-                                </Badge>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span>{result.entry.content.length} characters</span>
+                            {result.entry.tags && result.entry.tags.length > 0 && (
+                              <>
+                                <span>•</span>
+                                <div className="flex gap-1">
+                                  {result.entry.tags.map((tag) => (
+                                    <Badge key={tag} variant="secondary" className="text-xs">
+                                      {tag}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {!result.entry.content && useRag && (
+                        <p className="text-xs text-muted-foreground italic">
+                          Source reference (content used in answer generation)
+                        </p>
+                      )}
                     </CardContent>
                   </Card>
                 ))}

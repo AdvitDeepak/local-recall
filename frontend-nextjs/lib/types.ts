@@ -1,16 +1,31 @@
 export interface Stats {
   total_entries: number
   embedded_entries: number
-  is_capturing: boolean
+  is_embedded: boolean
+}
+
+export interface SystemStatus {
+  capturing: boolean
+  database: {
+    total_entries: number
+    embedded_entries: number
+    pending_embeddings: number
+  }
+  vector_store: {
+    total_vectors: number
+    dimension: number
+  }
+  backend_version: string
 }
 
 export interface DataEntry {
   id: number
-  text: string
+  content: string
   source: string
+  capture_method: string
   timestamp: string
-  tags?: string[]
-  char_count: number
+  tags: string[]
+  is_embedded: boolean
 }
 
 export interface SearchResult {
@@ -29,7 +44,8 @@ export interface Keybind {
   id: number
   key_sequence: string
   action: string
-  platform: string
+  is_active: boolean
+  created_at: string
 }
 
 export interface Notification {

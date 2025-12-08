@@ -24,9 +24,10 @@ export const useToastStore = create<ToastStore>((set) => ({
 }))
 
 export function useToast() {
-  const { addToast } = useToastStore()
+  const { toasts, addToast } = useToastStore()
 
   return {
     toast: addToast,
+    toasts,
   }
 }

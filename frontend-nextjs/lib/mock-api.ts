@@ -12,43 +12,48 @@ import type {
 const mockEntries: DataEntry[] = [
   {
     id: 1,
-    text: "React is a JavaScript library for building user interfaces. It lets you create reusable components and manage state efficiently.",
+    content: "React is a JavaScript library for building user interfaces. It lets you create reusable components and manage state efficiently.",
     source: "clipboard",
+    capture_method: "selected",
     timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     tags: [],
-    char_count: 134,
+    is_embedded: true,
   },
   {
     id: 2,
-    text: "Next.js is a React framework that enables server-side rendering and static site generation. It provides features like file-based routing, API routes, and automatic code splitting.",
+    content: "Next.js is a React framework that enables server-side rendering and static site generation. It provides features like file-based routing, API routes, and automatic code splitting.",
     source: "clipboard",
+    capture_method: "selected",
     timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
     tags: ["documentation"],
-    char_count: 189,
+    is_embedded: true,
   },
   {
     id: 3,
-    text: "TypeScript adds static typing to JavaScript, helping catch errors early in development and improving code maintainability.",
+    content: "TypeScript adds static typing to JavaScript, helping catch errors early in development and improving code maintainability.",
     source: "screenshot",
+    capture_method: "screenshot",
     timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
     tags: [],
-    char_count: 131,
+    is_embedded: true,
   },
   {
     id: 4,
-    text: "Tailwind CSS is a utility-first CSS framework that provides low-level utility classes for building custom designs without writing CSS.",
+    content: "Tailwind CSS is a utility-first CSS framework that provides low-level utility classes for building custom designs without writing CSS.",
     source: "clipboard",
+    capture_method: "selected",
     timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
     tags: ["css", "documentation"],
-    char_count: 138,
+    is_embedded: true,
   },
   {
     id: 5,
-    text: "Local Recall is a privacy-first RAG system that captures text locally and provides semantic search capabilities.",
+    content: "Local Recall is a privacy-first RAG system that captures text locally and provides semantic search capabilities.",
     source: "upload",
+    capture_method: "upload",
     timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
     tags: ["project"],
-    char_count: 118,
+    is_embedded: true,
   },
 ]
 
@@ -133,11 +138,12 @@ export const mockApi = {
     await delay(800)
     const newEntry: DataEntry = {
       id: Math.max(...mockEntries.map((e) => e.id)) + 1,
-      text: data.text,
+      content: data.text,
       source: data.source,
+      capture_method: "upload",
       timestamp: new Date().toISOString(),
       tags: data.tags || [],
-      char_count: data.text.length,
+      is_embedded: false,
     }
     mockEntries.unshift(newEntry)
     mockStats.total_entries++

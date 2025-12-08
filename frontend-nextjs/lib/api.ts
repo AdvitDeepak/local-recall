@@ -1,5 +1,6 @@
 import type {
   Stats,
+  SystemStatus,
   DataEntry,
   SearchResult,
   RAGResponse,
@@ -42,6 +43,9 @@ async function fetchAPI<T>(
 export const api = {
   getStats: (): Promise<Stats> =>
     USE_MOCK_API ? mockApi.getStats() : fetchAPI("/stats"),
+
+  getStatus: (): Promise<SystemStatus> =>
+    fetchAPI("/status"),
 
   getData: (params?: {
     source?: string
@@ -121,12 +125,12 @@ export const api = {
           body: JSON.stringify({ key_sequence: keySequence }),
         }),
 
-  getNotifications: (params?: {
+  getNotifications: async (params?: {
     since_id?: number
     unread_only?: boolean
     limit?: number
-  }): Promise<Notification[]> => {
-    if (USE_MOCK_API) return mockApi.getNotifications(params)
+  }): Promise<{ notifications: Notification[] }> => {
+    if (USE_MOCK_API) return { notifications: await mockApi.getNotifications(params) }
 
     const searchParams = new URLSearchParams()
     if (params?.since_id !== undefined)
@@ -147,4 +151,10 @@ export const api = {
     USE_MOCK_API
       ? mockApi.markAllNotificationsRead()
       : fetchAPI("/notifications/read-all", { method: "POST" }),
+
+  startCapture: (): Promise<{ status: string }> =>
+    fetchAPI("/control/start", { method: "POST" }),
+
+  stopCapture: (): Promise<{ status: string }> =>
+    fetchAPI("/control/stop", { method: "POST" }),
 }

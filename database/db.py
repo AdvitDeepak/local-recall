@@ -8,7 +8,7 @@ from contextlib import contextmanager
 import logging
 
 from database.models import Base, DataEntry, Keybind, SystemState, Notification
-from config import settings, PST
+from config import settings
 
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class Database:
                 source=source,
                 capture_method=capture_method,
                 tags=",".join(tags) if tags else None,
-                timestamp=datetime.now(PST)
+                timestamp=datetime.utcnow()
             )
             session.add(entry)
             session.flush()
@@ -184,9 +184,9 @@ class Database:
             if state:
                 state.is_capturing = is_capturing
                 if is_capturing:
-                    state.last_started = datetime.now(PST)
+                    state.last_started = datetime.utcnow()
                 else:
-                    state.last_stopped = datetime.now(PST)
+                    state.last_stopped = datetime.utcnow()
 
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics."""
@@ -214,7 +214,7 @@ class Database:
                 title=title,
                 message=message,
                 status=status,
-                timestamp=datetime.now(PST)
+                timestamp=datetime.utcnow()
             )
             session.add(notification)
             session.flush()

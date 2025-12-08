@@ -163,10 +163,10 @@ export function DataTab() {
             {entries.map((entry) => {
               const isExpanded = expandedId === entry.id
               const displayText = isExpanded
-                ? entry.text
-                : entry.text.length > 200
-                ? entry.text.substring(0, 200) + "..."
-                : entry.text
+                ? entry.content
+                : entry.content.length > 200
+                ? entry.content.substring(0, 200) + "..."
+                : entry.content
 
               return (
                 <Card key={entry.id} className="hover:shadow-md transition-shadow">
@@ -210,7 +210,7 @@ export function DataTab() {
                       {displayText}
                     </p>
 
-                    {entry.text.length > 200 && (
+                    {entry.content.length > 200 && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -221,7 +221,7 @@ export function DataTab() {
                     )}
 
                     <div className="mt-2 text-xs text-muted-foreground">
-                      {entry.char_count} characters
+                      {entry.content.length} characters
                     </div>
                   </CardContent>
                 </Card>
