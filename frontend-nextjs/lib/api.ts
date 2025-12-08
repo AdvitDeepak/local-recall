@@ -8,8 +8,10 @@ import type {
   QueryRequest,
   UploadRequest,
 } from "./types"
+import { mockApi } from "./mock-api"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"
+const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API === "true"
 
 class APIError extends Error {
   constructor(public status: number, message: string) {
@@ -38,13 +40,16 @@ async function fetchAPI<T>(
 }
 
 export const api = {
-  getStats: (): Promise<Stats> => fetchAPI("/stats"),
+  getStats: (): Promise<Stats> =>
+    USE_MOCK_API ? mockApi.getStats() : fetchAPI("/stats"),
 
   getData: (params?: {
     source?: string
     tag?: string
     limit?: number
   }): Promise<DataEntry[]> => {
+    if (USE_MOCK_API) return mockApi.getData(params)
+
     const searchParams = new URLSearchParams()
     if (params?.source) searchParams.append("source", params.source)
     if (params?.tag) searchParams.append("tag", params.tag)
@@ -54,21 +59,29 @@ export const api = {
   },
 
   deleteEntry: (id: number): Promise<{ message: string }> =>
-    fetchAPI(`/data/${id}`, { method: "DELETE" }),
+    USE_MOCK_API
+      ? mockApi.deleteEntry(id)
+      : fetchAPI(`/data/${id}`, { method: "DELETE" }),
 
   createEntry: (data: UploadRequest): Promise<DataEntry> =>
-    fetchAPI("/data", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    USE_MOCK_API
+      ? mockApi.createEntry(data)
+      : fetchAPI("/data", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
 
   query: (request: QueryRequest): Promise<RAGResponse> =>
-    fetchAPI("/query", {
-      method: "POST",
-      body: JSON.stringify(request),
-    }),
+    USE_MOCK_API
+      ? mockApi.query(request)
+      : fetchAPI("/query", {
+          method: "POST",
+          body: JSON.stringify(request),
+        }),
 
   queryStream: (request: QueryRequest): EventSource => {
+    if (USE_MOCK_API) return mockApi.queryStream(request)
+
     const searchParams = new URLSearchParams()
     searchParams.append("query", request.query)
     searchParams.append("model", request.model)
@@ -80,6 +93,8 @@ export const api = {
   },
 
   search: (query: string, k: number = 5): Promise<SearchResult[]> => {
+    if (USE_MOCK_API) return mockApi.search(query, k)
+
     const searchParams = new URLSearchParams()
     searchParams.append("query", query)
     searchParams.append("k", k.toString())
@@ -87,25 +102,32 @@ export const api = {
     return fetchAPI(`/search?${searchParams.toString()}`)
   },
 
-  getKeybinds: (): Promise<Keybind[]> => fetchAPI("/keybinds"),
+  getKeybinds: (): Promise<Keybind[]> =>
+    USE_MOCK_API ? mockApi.getKeybinds() : fetchAPI("/keybinds"),
 
   addSelectedTextKeybind: (keySequence: string): Promise<Keybind> =>
-    fetchAPI("/keybind/selected", {
-      method: "POST",
-      body: JSON.stringify({ key_sequence: keySequence }),
-    }),
+    USE_MOCK_API
+      ? mockApi.addSelectedTextKeybind(keySequence)
+      : fetchAPI("/keybind/selected", {
+          method: "POST",
+          body: JSON.stringify({ key_sequence: keySequence }),
+        }),
 
   addScreenshotKeybind: (keySequence: string): Promise<Keybind> =>
-    fetchAPI("/keybind/screenshot", {
-      method: "POST",
-      body: JSON.stringify({ key_sequence: keySequence }),
-    }),
+    USE_MOCK_API
+      ? mockApi.addScreenshotKeybind(keySequence)
+      : fetchAPI("/keybind/screenshot", {
+          method: "POST",
+          body: JSON.stringify({ key_sequence: keySequence }),
+        }),
 
   getNotifications: (params?: {
     since_id?: number
     unread_only?: boolean
     limit?: number
   }): Promise<Notification[]> => {
+    if (USE_MOCK_API) return mockApi.getNotifications(params)
+
     const searchParams = new URLSearchParams()
     if (params?.since_id !== undefined)
       searchParams.append("since_id", params.since_id.toString())
@@ -117,8 +139,12 @@ export const api = {
   },
 
   markNotificationRead: (id: number): Promise<{ message: string }> =>
-    fetchAPI(`/notifications/${id}/read`, { method: "POST" }),
+    USE_MOCK_API
+      ? mockApi.markNotificationRead(id)
+      : fetchAPI(`/notifications/${id}/read`, { method: "POST" }),
 
   markAllNotificationsRead: (): Promise<{ message: string }> =>
-    fetchAPI("/notifications/read-all", { method: "POST" }),
+    USE_MOCK_API
+      ? mockApi.markAllNotificationsRead()
+      : fetchAPI("/notifications/read-all", { method: "POST" }),
 }
